@@ -2,16 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import QRCode from "qrcode";
 import { registrationSchema, type RegistrationInput } from "@/lib/validation";
 
 type SuccessState = {
+  registrationId: string;
   fullName: string;
   contactNumber: string;
   church: string;
-  qrDataUrl: string;
+  role: string | null;
 };
 
 type RegistrationFormProps = {
@@ -48,6 +49,8 @@ function SummaryIcon({ children }: { children: ReactNode }) {
 }
 
 export default function RegistrationForm({ presetChurch, lockChurch = false, showRoleField = false }: RegistrationFormProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
   const [registrationStatus, setRegistrationStatus] = useState<RegistrationStatus | null>(null);
@@ -178,14 +181,12 @@ export default function RegistrationForm({ presetChurch, lockChurch = false, sho
         throw new Error(result.message ?? "Registration failed.");
       }
 
-      const qrPayload = `Name: ${result.registration.fullName}\nContact: ${result.registration.contactNumber}`;
-      const qrDataUrl = await QRCode.toDataURL(qrPayload, { width: 220, margin: 1 });
-
       setSuccess({
+        registrationId: result.registration.id,
         fullName: result.registration.fullName,
         contactNumber: result.registration.contactNumber,
         church: result.registration.church,
-        qrDataUrl
+        role: result.registration.role ?? null
       });
 
       reset();
@@ -198,18 +199,30 @@ export default function RegistrationForm({ presetChurch, lockChurch = false, sho
   });
 
   if (success) {
+    const isMemberFlow = pathname === "/member";
     return (
       <div className="paper-panel mx-auto mt-8 max-w-xl p-6 text-center animate-rise-in md:p-8">
         <p className="text-xs uppercase tracking-[0.2em] ink-muted">Confirmed</p>
         <h3 className="mt-2 font-serif text-2xl md:text-3xl">Registration Successful</h3>
         <p className="mt-3 ink-muted">Thank you, {success.fullName}. Your conference registration is confirmed.</p>
         <div className="mt-4 space-y-1 text-sm text-sepia-800">
+          <p>Reference: {success.registrationId.slice(0, 8).toUpperCase()}</p>
           <p>Contact: {success.contactNumber}</p>
           <p>Church: {success.church}</p>
+          {success.role ? <p>Role/Ministry: {success.role}</p> : null}
         </div>
-        <img src={success.qrDataUrl} alt="Attendee QR Code" className="mx-auto mt-5 rounded-lg border border-amber-800/40 bg-white p-1.5" />
-        <button onClick={() => setSuccess(null)} className="btn-secondary mt-6">
-          Register Another
+        <div className="mt-5 rounded-lg border border-amber-900/20 bg-amber-100/55 p-3 text-left text-sm text-sepia-900/90">
+          <p className="font-semibold">What&apos;s next</p>
+          <p className="mt-1">Please keep your contact number active. Event updates and confirmations will be sent by the admin team.</p>
+        </div>
+        <button
+          onClick={() => {
+            setSuccess(null);
+            if (isMemberFlow) router.replace("/member");
+          }}
+          className="btn-secondary mt-6"
+        >
+          {isMemberFlow ? "Register Another Member" : "Register Another"}
         </button>
       </div>
     );
