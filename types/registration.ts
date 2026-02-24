@@ -6,7 +6,8 @@ export type Registration = {
   church: string;
   hasVehicle: boolean;
   plateNumber: string | null;
+  confirmedAttendance: boolean;
   createdAt: string;
 };
 
-export type RegistrationPayload = Omit<Registration, "id" | "createdAt">;
+export type RegistrationPayload = Omit<Registration, "id" | "createdAt" | "confirmedAttendance">;

@@ -13,7 +13,7 @@ export const registrationSchema = z
       .or(z.literal(""))
       .refine((value) => !value || z.string().email().safeParse(value).success, {
         message: "Please enter a valid email address."
-      }),
+    }),
     church: z.string().min(2, "Church associated with is required."),
     hasVehicle: z.boolean(),
     plateNumber: z.string().optional().or(z.literal(""))

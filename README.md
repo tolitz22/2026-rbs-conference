@@ -12,10 +12,10 @@ A production-style Next.js App Router application for **OUR COVENANTAL HERITAGE*
 - Admin dashboard (`/admin`) with:
   - Search (name/contact)
   - Vehicle filters
+  - Attendance confirmation toggle (mark who will actually attend)
   - CSV export
 - Automation hooks:
   - Registration webhook
-  - Optional Google Sheets sync webhook
   - Confirmation message simulation
 
 ## Tech Stack
@@ -39,9 +39,9 @@ Copy `.env.example` into `.env.local` and set values:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 REGISTRATION_WEBHOOK_URL=... # optional
-GOOGLE_SHEETS_WEBHOOK_URL=... # optional
 ```
 
 ## 3) Database Setup (Supabase)
@@ -50,7 +50,7 @@ Open your Supabase SQL editor and run:
 
 - `lib/sql-setup.sql`
 
-This creates the `registrations` table and duplicate-prevention unique index.
+This creates the `registrations` table (including `confirmed_attendance`) and duplicate-prevention unique index.
 
 ## 4) Run Locally
 
@@ -62,35 +62,6 @@ Open:
 
 - User page: `http://localhost:3000`
 - Admin page: `http://localhost:3000/admin`
-
----
-
-## Google Sheets Sync (Optional)
-
-Set `GOOGLE_SHEETS_WEBHOOK_URL` to an Apps Script Web App endpoint that accepts JSON and appends rows.
-
-### Example Apps Script (`doPost`)
-
-```javascript
-function doPost(e) {
-  const sheet = SpreadsheetApp.openById('YOUR_SHEET_ID').getSheetByName('Registrations');
-  const data = JSON.parse(e.postData.contents);
-
-  sheet.appendRow([
-    data.id,
-    data.fullName,
-    data.contactNumber,
-    data.email || '',
-    data.church,
-    data.hasVehicle ? 'Yes' : 'No',
-    data.plateNumber || '',
-    data.createdAt,
-  ]);
-
-  return ContentService.createTextOutput(JSON.stringify({ ok: true }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-```
 
 ---
 

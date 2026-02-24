@@ -1,49 +1,57 @@
-import { getDb, rowToRegistration } from "@/lib/db";
+import { listRegistrations } from "@/lib/db";
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
 
 export async function GET(request: Request) {
-  const db = getDb();
-  const { searchParams } = new URL(request.url);
-  const query = searchParams.get("q")?.trim();
-  const vehicle = searchParams.get("vehicle");
+  try {
+    const { searchParams } = new URL(request.url);
+    const query = searchParams.get("q")?.trim();
+    const vehicle = searchParams.get("vehicle");
+    const confirmed = searchParams.get("confirmed");
+    const vehicleFilter = vehicle === "yes" || vehicle === "no" ? vehicle : undefined;
+    const confirmedFilter = confirmed === "yes" || confirmed === "no" ? confirmed : undefined;
+    const rows = await withTimeout(listRegistrations({ query, vehicle: vehicleFilter, confirmed: confirmedFilter }), 8000);
+    const header = ["Name", "Contact", "Email", "Church", "Has Vehicle", "Plate Number", "Confirmed Attendance", "Date Registered"];
+    const csvRows = rows.map((row) =>
+      [
+        row.fullName,
+        row.contactNumber,
+        row.email ?? "",
+        row.church,
+        row.hasVehicle ? "Yes" : "No",
+        row.plateNumber ?? "",
+        row.confirmedAttendance ? "Yes" : "No",
+        new Date(row.createdAt).toISOString()
+      ]
+        .map((value) => `"${String(value).replaceAll('"', '""')}"`)
+        .join(",")
+    );
 
-  let qb = db.from("registrations").select("*").order("created_at", { ascending: false });
+    const csv = [header.join(","), ...csvRows].join("\n");
 
-  if (query) {
-    qb = qb.or(`full_name.ilike.%${query}%,contact_number.ilike.%${query}%`);
+    return new Response(csv, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv",
+        "Content-Disposition": "attachment; filename=registrations.csv"
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to export registrations.";
+    const status = message.includes("timed out") ? 504 : 500;
+    return new Response(message, { status });
   }
-
-  if (vehicle === "yes") qb = qb.eq("has_vehicle", true);
-  if (vehicle === "no") qb = qb.eq("has_vehicle", false);
-
-  const result = await qb;
-
-  if (result.error) {
-    return new Response(result.error.message, { status: 500 });
-  }
-
-  const rows = result.data.map(rowToRegistration);
-  const header = ["Name", "Contact", "Email", "Church", "Has Vehicle", "Plate Number", "Date Registered"];
-  const csvRows = rows.map((row) =>
-    [
-      row.fullName,
-      row.contactNumber,
-      row.email ?? "",
-      row.church,
-      row.hasVehicle ? "Yes" : "No",
-      row.plateNumber ?? "",
-      new Date(row.createdAt).toISOString()
-    ]
-      .map((value) => `"${String(value).replaceAll('"', '""')}"`)
-      .join(",")
-  );
-
-  const csv = [header.join(","), ...csvRows].join("\n");
-
-  return new Response(csv, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/csv",
-      "Content-Disposition": "attachment; filename=registrations.csv"
-    }
-  });
 }

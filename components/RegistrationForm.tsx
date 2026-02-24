@@ -225,15 +225,16 @@ export default function RegistrationForm() {
 
                 <div className="space-y-2">
                   <label htmlFor="hasVehicle" className="text-xs uppercase tracking-[0.16em] text-sepia-900/85">
-                    Do you have a vehicle?
+                    Will you bring a vehicle to the event?
                   </label>
+                  <p className="text-xs ink-muted">Answer Yes only if you are the driver of the vehicle. We ask this for parking allocation and gate verification.</p>
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => setValue("hasVehicle", true, { shouldValidate: true })}
                       className={`rounded-lg border px-4 py-2.5 text-sm transition ${hasVehicle ? "border-amber-900 bg-amber-200 text-sepia-900" : "border-amber-800/35 bg-amber-50/80"}`}
                     >
-                      Yes
+                      Yes, I will bring one
                     </button>
                     <button
                       type="button"
@@ -243,7 +244,7 @@ export default function RegistrationForm() {
                       }}
                       className={`rounded-lg border px-4 py-2.5 text-sm transition ${!hasVehicle ? "border-amber-900 bg-amber-200 text-sepia-900" : "border-amber-800/35 bg-amber-50/80"}`}
                     >
-                      No
+                      No vehicle
                     </button>
                   </div>
                 </div>
