@@ -22,6 +22,26 @@ export type RegistrationSettings = {
   max_capacity: number | null;
 };
 
+export type DatabaseError = Error & {
+  code?: string;
+  details?: string;
+};
+
+function makeDatabaseError(message: string, code?: string, details?: string): DatabaseError {
+  const error = new Error(message) as DatabaseError;
+  error.code = code;
+  error.details = details;
+  return error;
+}
+
+function normalizeFullName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeContactNumber(value: string) {
+  return value.replace(/\D/g, "").trim();
+}
+
 function getDb() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey =
@@ -54,8 +74,8 @@ function rowToRegistration(row: RegistrationRow): Registration {
 
 function payloadToRow(payload: RegistrationPayload) {
   return {
-    full_name: payload.fullName.trim(),
-    contact_number: payload.contactNumber.trim(),
+    full_name: normalizeFullName(payload.fullName),
+    contact_number: normalizeContactNumber(payload.contactNumber),
     email: payload.email?.trim() || null,
     church: payload.church.trim(),
     role: payload.role?.trim() || null,
@@ -86,19 +106,6 @@ export async function listRegistrations(params?: { query?: string; vehicle?: "ye
   return (result.data ?? []).map((row) => rowToRegistration(row as RegistrationRow));
 }
 
-export async function hasDuplicateRegistration(fullName: string, contactNumber: string) {
-  const db = getDb();
-  const result = await db
-    .from("registrations")
-    .select("id")
-    .eq("full_name", fullName.trim())
-    .eq("contact_number", contactNumber.trim())
-    .limit(1);
-
-  if (result.error) throw new Error(result.error.message);
-  return (result.data?.length ?? 0) > 0;
-}
-
 export async function insertRegistration(payload: RegistrationPayload): Promise<Registration> {
   const db = getDb();
   const insert = await db
@@ -108,7 +115,11 @@ export async function insertRegistration(payload: RegistrationPayload): Promise<
     .single();
 
   if (insert.error || !insert.data) {
-    throw new Error(insert.error?.message ?? "Unable to save registration.");
+    throw makeDatabaseError(
+      insert.error?.message ?? "Unable to save registration.",
+      insert.error?.code,
+      insert.error?.details
+    );
   }
 
   return rowToRegistration(insert.data as RegistrationRow);
@@ -119,8 +130,8 @@ export async function updateRegistrationById(id: string, payload: RegistrationPa
   const result = await db
     .from("registrations")
     .update({
-      full_name: payload.fullName.trim(),
-      contact_number: payload.contactNumber.trim(),
+      full_name: normalizeFullName(payload.fullName),
+      contact_number: normalizeContactNumber(payload.contactNumber),
       email: payload.email?.trim() || null,
       church: payload.church.trim(),
       role: payload.role?.trim() || null,
@@ -131,7 +142,7 @@ export async function updateRegistrationById(id: string, payload: RegistrationPa
     .select("*")
     .maybeSingle();
 
-  if (result.error) throw new Error(result.error.message);
+  if (result.error) throw makeDatabaseError(result.error.message, result.error.code, result.error.details);
   if (!result.data) return null;
 
   return rowToRegistration(result.data as RegistrationRow);
@@ -215,7 +226,7 @@ export async function updateConfirmedAttendance(id: string, confirmedAttendance:
     .select("*")
     .maybeSingle();
 
-  if (result.error) throw new Error(result.error.message);
+  if (result.error) throw makeDatabaseError(result.error.message, result.error.code, result.error.details);
   if (!result.data) return null;
 
   return rowToRegistration(result.data as RegistrationRow);

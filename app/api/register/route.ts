@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getRegistrationCount, getRegistrationSettings, hasDuplicateRegistration, insertRegistration } from "@/lib/db";
+import { getRegistrationCount, getRegistrationSettings, insertRegistration, type DatabaseError } from "@/lib/db";
 import { getRegistrationGateStatus } from "@/lib/registration-gate";
 import { registrationSchema } from "@/lib/validation";
 
@@ -29,15 +29,6 @@ export async function POST(request: Request) {
     }
 
     const clean = parsed.data;
-
-    // Duplicate prevention: same name + contact number
-    const duplicate = await hasDuplicateRegistration(clean.fullName, clean.contactNumber);
-    if (duplicate) {
-      return NextResponse.json(
-        { message: "Duplicate registration detected for the same name and contact number." },
-        { status: 409 }
-      );
-    }
 
     const latestCount = await getRegistrationCount();
     const latestSettings = await getRegistrationSettings();
@@ -73,8 +64,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ registration, confirmation }, { status: 201 });
   } catch (error) {
+    const dbError = error as DatabaseError;
     const message = error instanceof Error ? error.message : "Unexpected server error.";
-    if (message.toLowerCase().includes("duplicate key value")) {
+    if (dbError.code === "23505" || message.toLowerCase().includes("duplicate key value")) {
       return NextResponse.json(
         { message: "Duplicate registration detected for the same name and contact number." },
         { status: 409 }

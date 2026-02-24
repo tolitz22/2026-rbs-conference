@@ -23,6 +23,14 @@ add column if not exists role text;
 create unique index if not exists registrations_name_contact_unique
 on public.registrations (lower(full_name), contact_number);
 
+-- Stronger duplicate prevention under peak load:
+-- normalizes extra spaces/case in names and strips non-digits in contact numbers
+create unique index if not exists registrations_name_contact_unique_normalized
+on public.registrations (
+  lower(regexp_replace(trim(full_name), '\s+', ' ', 'g')),
+  regexp_replace(contact_number, '\D', '', 'g')
+);
+
 create table if not exists public.registration_settings (
   id integer primary key,
   enabled boolean not null default true,

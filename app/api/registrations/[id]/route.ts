@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { registrationAdminUpdateSchema } from "@/lib/validation";
-import { updateRegistrationById } from "@/lib/db";
+import { updateRegistrationById, type DatabaseError } from "@/lib/db";
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -34,8 +34,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
     return NextResponse.json({ registration: updated });
   } catch (error) {
+    const dbError = error as DatabaseError;
     const message = error instanceof Error ? error.message : "Unable to update registration.";
-    if (message.toLowerCase().includes("duplicate key value")) {
+    if (dbError.code === "23505" || message.toLowerCase().includes("duplicate key value")) {
       return NextResponse.json(
         { message: "Duplicate registration detected for the same name and contact number." },
         { status: 409 }
