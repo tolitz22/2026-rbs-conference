@@ -44,6 +44,8 @@ SUPABASE_SERVICE_ROLE_KEY=...
 REGISTRATION_WEBHOOK_URL=... # optional
 ```
 
+Registration controls are managed in-app at `/admin/settings` and stored in Supabase (`registration_settings` table).
+
 ## 3) Database Setup (Supabase)
 
 Open your Supabase SQL editor and run:

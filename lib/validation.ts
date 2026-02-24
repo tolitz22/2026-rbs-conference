@@ -15,6 +15,8 @@ export const registrationSchema = z
         message: "Please enter a valid email address."
     }),
     church: z.string().min(2, "Church associated with is required."),
+    role: z.string().trim().optional().or(z.literal("")),
+    roleOther: z.string().trim().optional().or(z.literal("")),
     hasVehicle: z.boolean(),
     plateNumber: z.string().optional().or(z.literal(""))
   })
@@ -26,6 +28,17 @@ export const registrationSchema = z
         message: "Plate number is required when vehicle is YES."
       });
     }
+
+    if (value.role === "Others" && !value.roleOther?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["roleOther"],
+        message: "Please specify your role/ministry."
+      });
+    }
   });
 
 export type RegistrationInput = z.infer<typeof registrationSchema>;
+
+export const registrationAdminUpdateSchema = registrationSchema;
+export type RegistrationAdminUpdateInput = z.infer<typeof registrationAdminUpdateSchema>;

@@ -11,6 +11,16 @@ export default function AdminTable() {
   const [rows, setRows] = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{
+    fullName: string;
+    contactNumber: string;
+    email: string;
+    church: string;
+    role: string;
+    hasVehicle: boolean;
+    plateNumber: string;
+  } | null>(null);
   const [search, setSearch] = useState("");
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +98,55 @@ export default function AdminTable() {
     }
   };
 
+  const startEdit = (row: Registration) => {
+    setError(null);
+    setEditingId(row.id);
+    setEditDraft({
+      fullName: row.fullName,
+      contactNumber: row.contactNumber,
+      email: row.email ?? "",
+      church: row.church,
+      role: row.role ?? "",
+      hasVehicle: row.hasVehicle,
+      plateNumber: row.plateNumber ?? ""
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditDraft(null);
+  };
+
+  const saveEdit = async (id: string) => {
+    if (!editDraft) return;
+    setUpdatingId(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/registrations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: editDraft.fullName,
+          contactNumber: editDraft.contactNumber,
+          email: editDraft.email,
+          church: editDraft.church,
+          role: editDraft.role,
+          hasVehicle: editDraft.hasVehicle,
+          plateNumber: editDraft.plateNumber
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to update registration.");
+
+      setRows((prev) => prev.map((row) => (row.id === id ? data.registration : row)));
+      cancelEdit();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update registration.");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   return (
     <section className="paper-panel p-5 md:p-6 animate-rise-in">
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -142,25 +201,91 @@ export default function AdminTable() {
                 <th className="p-3">Contact</th>
                 <th className="p-3">Email</th>
                 <th className="p-3">Church</th>
+                <th className="p-3">Role/Ministry</th>
                 <th className="p-3">Vehicle</th>
                 <th className="p-3">Plate Number</th>
                 <th className="p-3">Attendance</th>
                 <th className="p-3">Date Registered</th>
+                <th className="p-3">Actions</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id} className="border-b border-amber-900/10">
-                  <td className="p-3">{row.fullName}</td>
-                  <td className="p-3">{row.contactNumber}</td>
-                  <td className="p-3">{row.email ?? "-"}</td>
-                  <td className="p-3">{row.church}</td>
-                  <td className="p-3">{row.hasVehicle ? "Yes" : "No"}</td>
-                  <td className="p-3">{row.plateNumber ?? "-"}</td>
+                  <td className="p-3">
+                    {editingId === row.id && editDraft ? (
+                      <input
+                        value={editDraft.fullName}
+                        onChange={(e) => setEditDraft({ ...editDraft, fullName: e.target.value })}
+                        className="input-parchment min-w-44 py-1.5"
+                      />
+                    ) : row.fullName}
+                  </td>
+                  <td className="p-3">
+                    {editingId === row.id && editDraft ? (
+                      <input
+                        value={editDraft.contactNumber}
+                        onChange={(e) => setEditDraft({ ...editDraft, contactNumber: e.target.value })}
+                        className="input-parchment min-w-36 py-1.5"
+                      />
+                    ) : row.contactNumber}
+                  </td>
+                  <td className="p-3">
+                    {editingId === row.id && editDraft ? (
+                      <input
+                        value={editDraft.email}
+                        onChange={(e) => setEditDraft({ ...editDraft, email: e.target.value })}
+                        className="input-parchment min-w-44 py-1.5"
+                      />
+                    ) : row.email ?? "-"}
+                  </td>
+                  <td className="p-3">
+                    {editingId === row.id && editDraft ? (
+                      <input
+                        value={editDraft.church}
+                        onChange={(e) => setEditDraft({ ...editDraft, church: e.target.value })}
+                        className="input-parchment min-w-44 py-1.5"
+                      />
+                    ) : row.church}
+                  </td>
+                  <td className="p-3">
+                    {editingId === row.id && editDraft ? (
+                      <input
+                        value={editDraft.role}
+                        onChange={(e) => setEditDraft({ ...editDraft, role: e.target.value })}
+                        className="input-parchment min-w-36 py-1.5"
+                      />
+                    ) : row.role ?? "-"}
+                  </td>
+                  <td className="p-3">
+                    {editingId === row.id && editDraft ? (
+                      <select
+                        value={editDraft.hasVehicle ? "yes" : "no"}
+                        onChange={(e) => {
+                          const hasVehicle = e.target.value === "yes";
+                          setEditDraft({ ...editDraft, hasVehicle, plateNumber: hasVehicle ? editDraft.plateNumber : "" });
+                        }}
+                        className="input-parchment py-1.5"
+                      >
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    ) : row.hasVehicle ? "Yes" : "No"}
+                  </td>
+                  <td className="p-3">
+                    {editingId === row.id && editDraft ? (
+                      <input
+                        value={editDraft.plateNumber}
+                        onChange={(e) => setEditDraft({ ...editDraft, plateNumber: e.target.value })}
+                        disabled={!editDraft.hasVehicle}
+                        className="input-parchment min-w-32 py-1.5 disabled:opacity-50"
+                      />
+                    ) : row.plateNumber ?? "-"}
+                  </td>
                   <td className="p-3">
                     <button
                       type="button"
-                      disabled={updatingId === row.id}
+                      disabled={updatingId === row.id || editingId === row.id}
                       onClick={() => toggleAttendance(row.id, !row.confirmedAttendance)}
                       className={`rounded-md border px-3 py-1.5 text-xs uppercase tracking-[0.08em] transition ${
                         row.confirmedAttendance
@@ -172,11 +297,32 @@ export default function AdminTable() {
                     </button>
                   </td>
                   <td className="p-3">{new Date(row.createdAt).toLocaleString()}</td>
+                  <td className="p-3">
+                    {editingId === row.id ? (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={updatingId === row.id}
+                          onClick={() => saveEdit(row.id)}
+                          className="btn-primary px-3 py-1.5 text-xs"
+                        >
+                          Save
+                        </button>
+                        <button type="button" onClick={cancelEdit} className="btn-secondary px-3 py-1.5 text-xs">
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => startEdit(row)} className="btn-secondary px-3 py-1.5 text-xs">
+                        Edit
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-5 text-center ink-muted">
+                  <td colSpan={10} className="p-5 text-center ink-muted">
                     No registrations found.
                   </td>
                 </tr>

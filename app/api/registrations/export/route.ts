@@ -24,13 +24,14 @@ export async function GET(request: Request) {
     const vehicleFilter = vehicle === "yes" || vehicle === "no" ? vehicle : undefined;
     const confirmedFilter = confirmed === "yes" || confirmed === "no" ? confirmed : undefined;
     const rows = await withTimeout(listRegistrations({ query, vehicle: vehicleFilter, confirmed: confirmedFilter }), 8000);
-    const header = ["Name", "Contact", "Email", "Church", "Has Vehicle", "Plate Number", "Confirmed Attendance", "Date Registered"];
+    const header = ["Name", "Contact", "Email", "Church", "Role/Ministry", "Has Vehicle", "Plate Number", "Confirmed Attendance", "Date Registered"];
     const csvRows = rows.map((row) =>
       [
         row.fullName,
         row.contactNumber,
         row.email ?? "",
         row.church,
+        row.role ?? "",
         row.hasVehicle ? "Yes" : "No",
         row.plateNumber ?? "",
         row.confirmedAttendance ? "Yes" : "No",

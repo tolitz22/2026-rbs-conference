@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
-import { hasDuplicateRegistration, insertRegistration } from "@/lib/db";
+import { getRegistrationCount, getRegistrationSettings, hasDuplicateRegistration, insertRegistration } from "@/lib/db";
+import { getRegistrationGateStatus } from "@/lib/registration-gate";
 import { registrationSchema } from "@/lib/validation";
 
 export async function POST(request: Request) {
   try {
+    const settings = await getRegistrationSettings();
+    const currentCount = await getRegistrationCount();
+    const gate = getRegistrationGateStatus(settings, currentCount);
+    if (!gate.isOpen) {
+      return NextResponse.json(
+        { message: gate.message, reason: gate.reason, currentCount, maxCapacity: gate.maxCapacity },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const parsed = registrationSchema.safeParse(body);
 
@@ -28,11 +39,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const latestCount = await getRegistrationCount();
+    const latestSettings = await getRegistrationSettings();
+    const latestGate = getRegistrationGateStatus(latestSettings, latestCount);
+    if (!latestGate.isOpen) {
+      return NextResponse.json(
+        { message: latestGate.message, reason: latestGate.reason, currentCount: latestCount, maxCapacity: latestGate.maxCapacity },
+        { status: 403 }
+      );
+    }
+
     const registration = await insertRegistration({
       fullName: clean.fullName,
       contactNumber: clean.contactNumber,
       email: clean.email || null,
       church: clean.church,
+      role: clean.role === "Others" ? clean.roleOther || "Others" : clean.role || null,
       hasVehicle: clean.hasVehicle,
       plateNumber: clean.plateNumber || null
     });

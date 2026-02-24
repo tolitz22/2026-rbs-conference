@@ -4,6 +4,7 @@ export type Registration = {
   contactNumber: string;
   email: string | null;
   church: string;
+  role: string | null;
   hasVehicle: boolean;
   plateNumber: string | null;
   confirmedAttendance: boolean;

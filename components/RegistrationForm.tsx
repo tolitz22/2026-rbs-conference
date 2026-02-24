@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,6 +12,23 @@ type SuccessState = {
   contactNumber: string;
   church: string;
   qrDataUrl: string;
+};
+
+type RegistrationFormProps = {
+  presetChurch?: string;
+  lockChurch?: boolean;
+  showRoleField?: boolean;
+};
+
+const roleOptions = ["Food","Tech", "Comfort Room", "Usher", "Crowd Control", "Books", "Speaker", "Others"] as const;
+
+type RegistrationStatus = {
+  isOpen: boolean;
+  reason: "manual_off" | "not_started" | "ended" | "full" | "open";
+  message: string;
+  startsAt: string | null;
+  currentCount: number;
+  maxCapacity: number | null;
 };
 
 function CheckIcon({ className = "h-5 w-5" }: { className?: string }) {
@@ -30,11 +47,15 @@ function SummaryIcon({ children }: { children: ReactNode }) {
   );
 }
 
-export default function RegistrationForm() {
+export default function RegistrationForm({ presetChurch, lockChurch = false, showRoleField = false }: RegistrationFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [registrationStatus, setRegistrationStatus] = useState<RegistrationStatus | null>(null);
   const [success, setSuccess] = useState<SuccessState | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [fullModalMessage, setFullModalMessage] = useState<string | null>(null);
   const [step, setStep] = useState<1 | 2>(1);
+  const [nowMs, setNowMs] = useState(Date.now());
 
   const {
     register,
@@ -51,7 +72,9 @@ export default function RegistrationForm() {
       fullName: "",
       contactNumber: "",
       email: "",
-      church: "",
+      church: presetChurch ?? "",
+      role: "",
+      roleOther: "",
       hasVehicle: false,
       plateNumber: ""
     }
@@ -62,20 +85,78 @@ export default function RegistrationForm() {
   const contactNumber = watch("contactNumber");
   const email = watch("email");
   const church = watch("church");
+  const role = watch("role");
+  const roleOther = watch("roleOther");
   const plateNumber = watch("plateNumber");
 
   const fullNameValid = fullName.trim().length >= 3 && !errors.fullName;
   const contactValid = /^09\d{9}$/.test(contactNumber) && !errors.contactNumber;
   const emailValid = !email || (!!email && !errors.email);
   const churchValid = church.trim().length >= 2 && !errors.church;
+  const roleOtherValid = role !== "Others" || (!!roleOther?.trim() && !errors.roleOther);
   const plateValid = !hasVehicle || (!!plateNumber?.trim() && !errors.plateNumber);
+  const isRegistrationOpen = registrationStatus?.isOpen ?? true;
+  const startsAtMs = registrationStatus?.startsAt ? new Date(registrationStatus.startsAt).getTime() : null;
+
+  const countdown = useMemo(() => {
+    if (registrationStatus?.reason !== "not_started" || !startsAtMs) return null;
+    const diff = Math.max(0, startsAtMs - nowMs);
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+    const minutes = Math.floor((diff / (1000 * 60)) % 60);
+    const seconds = Math.floor((diff / 1000) % 60);
+    return { days, hours, minutes, seconds };
+  }, [registrationStatus?.reason, startsAtMs, nowMs]);
+
+  useEffect(() => {
+    const run = async () => {
+      setStatusLoading(true);
+      try {
+        const res = await fetch("/api/register/status");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Unable to load registration status.");
+        setRegistrationStatus(data);
+      } catch (error) {
+        setRegistrationStatus({
+          isOpen: false,
+          reason: "manual_off",
+          message: error instanceof Error ? error.message : "Unable to load registration status.",
+          startsAt: null,
+          currentCount: 0,
+          maxCapacity: null
+        });
+      } finally {
+        setStatusLoading(false);
+      }
+    };
+
+    run();
+  }, []);
+
+  useEffect(() => {
+    if (lockChurch && presetChurch) {
+      setValue("church", presetChurch, { shouldValidate: true });
+    }
+  }, [lockChurch, presetChurch, setValue]);
+
+  useEffect(() => {
+    if (registrationStatus?.reason !== "not_started" || !startsAtMs) return;
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [registrationStatus?.reason, startsAtMs]);
 
   const onNext = async () => {
+    if (!isRegistrationOpen) return;
     const ok = await trigger(["fullName", "contactNumber", "email"]);
     if (ok) setStep(2);
   };
 
   const onSubmit = handleSubmit(async (formData) => {
+    if (!isRegistrationOpen) {
+      setServerError(registrationStatus?.message ?? "Registration is currently closed.");
+      return;
+    }
+
     setServerError(null);
     setIsSubmitting(true);
 
@@ -83,11 +164,19 @@ export default function RegistrationForm() {
       const response = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          church: lockChurch && presetChurch ? presetChurch : formData.church
+        })
       });
 
       const result = await response.json();
-      if (!response.ok) throw new Error(result.message ?? "Registration failed.");
+      if (!response.ok) {
+        if (response.status === 403 && result.reason === "full") {
+          setFullModalMessage(result.message ?? "Registration is full.");
+        }
+        throw new Error(result.message ?? "Registration failed.");
+      }
 
       const qrPayload = `Name: ${result.registration.fullName}\nContact: ${result.registration.contactNumber}`;
       const qrDataUrl = await QRCode.toDataURL(qrPayload, { width: 220, margin: 1 });
@@ -127,7 +216,44 @@ export default function RegistrationForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="paper-panel mx-auto mt-8 max-w-6xl p-4 shadow-soft animate-rise-in md:p-7">
+    <form onSubmit={onSubmit} className="paper-panel relative mx-auto mt-8 max-w-6xl p-4 shadow-soft animate-rise-in md:p-7">
+      {statusLoading ? (
+        <p className="mb-4 text-sm ink-muted">Checking registration status...</p>
+      ) : null}
+      {!statusLoading && !isRegistrationOpen ? (
+        <div className="mb-4 rounded-lg border border-amber-900/35 bg-amber-100/70 p-3 text-sm text-sepia-900">
+          <p className="font-semibold">Registration Closed</p>
+          <p className="mt-1">{registrationStatus?.message}</p>
+          {registrationStatus?.reason === "not_started" && countdown ? (
+            <div className="mt-3 rounded-xl border border-amber-900/25 bg-amber-50/80 p-3 md:p-4">
+              <p className="mb-2 text-xs uppercase tracking-[0.14em] ink-muted">Countdown to Opening</p>
+              <div className="grid grid-cols-4 gap-2 text-center md:gap-3">
+                <div className="rounded-lg border border-amber-900/20 bg-white/65 p-2">
+                  <p key={`d-${countdown.days}`} className="animate-pop-in text-lg font-semibold md:text-2xl">{countdown.days}</p>
+                  <p className="text-[10px] uppercase tracking-[0.12em] ink-muted md:text-xs">Days</p>
+                </div>
+                <div className="rounded-lg border border-amber-900/20 bg-white/65 p-2">
+                  <p key={`h-${countdown.hours}`} className="animate-pop-in text-lg font-semibold md:text-2xl">{countdown.hours}</p>
+                  <p className="text-[10px] uppercase tracking-[0.12em] ink-muted md:text-xs">Hours</p>
+                </div>
+                <div className="rounded-lg border border-amber-900/20 bg-white/65 p-2">
+                  <p key={`m-${countdown.minutes}`} className="animate-pop-in text-lg font-semibold md:text-2xl">{countdown.minutes}</p>
+                  <p className="text-[10px] uppercase tracking-[0.12em] ink-muted md:text-xs">Mins</p>
+                </div>
+                <div className="animate-soft-pulse rounded-lg border border-amber-900/30 bg-amber-100/75 p-2">
+                  <p key={`s-${countdown.seconds}`} className="animate-pop-in text-lg font-semibold md:text-2xl">{countdown.seconds}</p>
+                  <p className="text-[10px] uppercase tracking-[0.12em] ink-muted md:text-xs">Secs</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {registrationStatus?.maxCapacity ? (
+            <p className="mt-1 ink-muted">
+              Slots: {registrationStatus.currentCount}/{registrationStatus.maxCapacity}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid gap-6 md:grid-cols-[1.8fr_1fr] md:gap-8">
         <div className="md:border-r md:border-amber-900/15 md:pr-8">
           <div className="mb-6">
@@ -155,7 +281,7 @@ export default function RegistrationForm() {
             </div>
           </div>
 
-          <div className="space-y-5">
+          <fieldset className="space-y-5" disabled={!isRegistrationOpen || statusLoading || isSubmitting}>
             {step === 1 ? (
               <div className="space-y-5 animate-fade-in">
                 <div className="space-y-2">
@@ -216,12 +342,49 @@ export default function RegistrationForm() {
                   <label htmlFor="church" className="text-xs uppercase tracking-[0.16em] text-sepia-900/85">
                     Church Associated With <span className="text-red-700">*</span>
                   </label>
-                  <div className="relative">
-                    <input id="church" className={`input-parchment pr-11 ${churchValid ? "border-green-700/45 bg-white" : ""}`} {...register("church")} />
-                    {churchValid ? <CheckIcon className="absolute right-3 top-1/2 h-6 w-6 -translate-y-1/2 text-green-700" /> : null}
-                  </div>
+                  {lockChurch ? (
+                    <div className="relative">
+                      <input
+                        id="church"
+                        readOnly
+                        className="input-parchment bg-amber-100/80 pr-11"
+                        {...register("church")}
+                      />
+                      <CheckIcon className="absolute right-3 top-1/2 h-6 w-6 -translate-y-1/2 text-green-700" />
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <input id="church" className={`input-parchment pr-11 ${churchValid ? "border-green-700/45 bg-white" : ""}`} {...register("church")} />
+                      {churchValid ? <CheckIcon className="absolute right-3 top-1/2 h-6 w-6 -translate-y-1/2 text-green-700" /> : null}
+                    </div>
+                  )}
                   {errors.church?.message ? <p className="text-sm text-red-700">{errors.church.message}</p> : null}
                 </div>
+
+                {showRoleField ? (
+                  <div className="space-y-2">
+                    <label htmlFor="role" className="text-xs uppercase tracking-[0.16em] text-sepia-900/85">
+                      Role / Ministry (Optional)
+                    </label>
+                    <select id="role" className="input-parchment" {...register("role")}>
+                      <option value="">Select role/ministry</option>
+                      {roleOptions.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                    {role === "Others" ? (
+                      <div className="space-y-2">
+                        <input
+                          id="roleOther"
+                          placeholder="Please specify"
+                          className={`input-parchment ${roleOtherValid ? "border-green-700/45 bg-white" : ""}`}
+                          {...register("roleOther")}
+                        />
+                        {errors.roleOther?.message ? <p className="text-sm text-red-700">{errors.roleOther.message}</p> : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 <div className="space-y-2">
                   <label htmlFor="hasVehicle" className="text-xs uppercase tracking-[0.16em] text-sepia-900/85">
@@ -274,7 +437,7 @@ export default function RegistrationForm() {
                 </div>
               </div>
             )}
-          </div>
+          </fieldset>
         </div>
 
         <aside className="animate-fade-in border-t border-amber-900/15 pt-6 md:sticky md:top-6 md:border-l md:border-t-0 md:border-amber-900/15 md:pl-7 md:pt-0">
@@ -287,7 +450,6 @@ export default function RegistrationForm() {
                 </svg>
               </SummaryIcon>
               <p className="text-base leading-tight md:text-xl">{fullName || "Name not provided"}</p>
-              {fullNameValid ? <CheckIcon className="ml-auto h-6 w-6 text-green-700" /> : null}
             </div>
 
             <div className="flex items-center gap-3">
@@ -308,6 +470,19 @@ export default function RegistrationForm() {
               <p className="text-base leading-tight md:text-xl">{church || "Church not provided"}</p>
             </div>
 
+            {showRoleField ? (
+              <div className="flex items-center gap-3">
+                <SummaryIcon>
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
+                    <path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h10v2H4v-2z" />
+                  </svg>
+                </SummaryIcon>
+                <p className="text-base leading-tight md:text-xl">
+                  {role ? (role === "Others" ? roleOther || "Others" : role) : "Role not provided"}
+                </p>
+              </div>
+            ) : null}
+
             <div className="flex items-center gap-3">
               <SummaryIcon>
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden>
@@ -319,6 +494,18 @@ export default function RegistrationForm() {
           </div>
         </aside>
       </div>
+      {fullModalMessage ? (
+        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-black/35 p-4">
+          <div className="w-full max-w-md rounded-xl border border-amber-900/30 bg-amber-50 p-5 shadow-soft">
+            <p className="text-xs uppercase tracking-[0.16em] ink-muted">Registration Status</p>
+            <h3 className="mt-2 font-serif text-xl text-sepia-900">Maximum Capacity Reached</h3>
+            <p className="mt-2 text-sm text-sepia-900/85">{fullModalMessage}</p>
+            <button type="button" onClick={() => setFullModalMessage(null)} className="btn-secondary mt-4 w-full">
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
     </form>
   );
 }
