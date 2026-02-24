@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { registrationAdminUpdateSchema } from "@/lib/validation";
 import { updateRegistrationById, type DatabaseError } from "@/lib/db";
+import { requireAdminApi } from "@/lib/admin-auth";
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  const unauthorized = requireAdminApi(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const { id } = await context.params;
     const body = await request.json();

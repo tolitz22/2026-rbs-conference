@@ -1,4 +1,5 @@
 import { listRegistrations } from "@/lib/db";
+import { requireAdminApi } from "@/lib/admin-auth";
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -16,6 +17,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 export async function GET(request: Request) {
+  const unauthorized = requireAdminApi(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("q")?.trim();

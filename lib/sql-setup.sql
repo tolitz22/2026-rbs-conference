@@ -42,3 +42,42 @@ create table if not exists public.registration_settings (
 insert into public.registration_settings (id, enabled, starts_at, ends_at, max_capacity)
 values (1, true, null, null, null)
 on conflict (id) do nothing;
+
+create table if not exists public.admin_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  password_hash text not null,
+  created_at timestamptz not null default now()
+);
+
+create or replace function public.verify_admin_login(input_email text, input_password text)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.admin_users
+    where lower(email) = lower(trim(input_email))
+      and password_hash = extensions.crypt(input_password, password_hash)
+  );
+$$;
+
+create or replace function public.upsert_admin_user(input_email text, input_password text)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.admin_users (email, password_hash)
+  values (
+    lower(trim(input_email)),
+    extensions.crypt(input_password, extensions.gen_salt('bf', 12))
+  )
+  on conflict (email) do update
+  set password_hash = excluded.password_hash;
+$$;
+
+-- Create/rotate an admin account:
+-- select public.upsert_admin_user('admin@example.com', 'ReplaceWithStrongPassword');

@@ -231,3 +231,17 @@ export async function updateConfirmedAttendance(id: string, confirmedAttendance:
 
   return rowToRegistration(result.data as RegistrationRow);
 }
+
+export async function verifyAdminCredentials(email: string, password: string): Promise<boolean> {
+  const db = getDb();
+  const result = await db.rpc("verify_admin_login", {
+    input_email: email.trim().toLowerCase(),
+    input_password: password
+  });
+
+  if (result.error) {
+    throw new Error(result.error.message);
+  }
+
+  return Boolean(result.data);
+}

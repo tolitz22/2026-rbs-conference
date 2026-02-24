@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRegistrationSettings, updateRegistrationSettings } from "@/lib/db";
+import { requireAdminApi } from "@/lib/admin-auth";
 
 const settingsSchema = z.object({
   enabled: z.boolean(),
@@ -17,7 +18,10 @@ const settingsSchema = z.object({
   }
 });
 
-export async function GET() {
+export async function GET(request: Request) {
+  const unauthorized = requireAdminApi(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const settings = await getRegistrationSettings();
     return NextResponse.json({
@@ -33,6 +37,9 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  const unauthorized = requireAdminApi(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await request.json();
     const parsed = settingsSchema.safeParse(body);

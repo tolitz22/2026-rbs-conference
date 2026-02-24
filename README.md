@@ -41,6 +41,7 @@ Copy `.env.example` into `.env.local` and set values:
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
+ADMIN_SESSION_SECRET=... # required for signing admin session cookies
 REGISTRATION_WEBHOOK_URL=... # optional
 ```
 
@@ -53,6 +54,13 @@ Open your Supabase SQL editor and run:
 - `lib/sql-setup.sql`
 
 This creates the `registrations` table (including `confirmed_attendance`) and duplicate-prevention unique index.
+It also creates `admin_users` plus helper SQL functions for secure admin login.
+
+Then create your admin login user:
+
+```sql
+select public.upsert_admin_user('admin@example.com', 'ReplaceWithStrongPassword');
+```
 
 ## 4) Run Locally
 
@@ -64,6 +72,7 @@ Open:
 
 - User page: `http://localhost:3000`
 - Admin page: `http://localhost:3000/admin`
+  - Login page: `http://localhost:3000/admin/login`
 
 ---
 
